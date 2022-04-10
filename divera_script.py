@@ -17,7 +17,7 @@ with open('settings.propperties', 'r') as config_file:
     for config_line in config_lines:
         config_property = config_line.split('=')
         config_key = config_property[0]
-        config_value = config_property[1]
+        config_value = config_property[1].replace('\n', '')
         if config_key == 'api_key':
             ACCESS_KEY = config_value
         elif config_key == 'telegram_bot_token':
@@ -53,7 +53,7 @@ class HdmiCec:
         os.system("echo 'scan' | cec-client -s -d 1")
 
     def on(self):
-        print("DISPLAY ON")
+        sendTelegramMessage("DISPLAY ON")
         if self.last_command == "on":
             return
         self.last_command = "on"
@@ -61,7 +61,7 @@ class HdmiCec:
 #        border_conn.write(b'\xA0\x01\x01\xA2')
 
     def standby(self):
-        print("DISPLAY OFF")
+        sendTelegramMessage("DISPLAY OFF")
         if self.last_command == "standby":
             return
         self.last_command = "standby"
@@ -115,9 +115,7 @@ while True:
 
     # case: monitor off an no mission and it is night time so make updates
     elif alarm_active is False and screen_active is False and hour == 3 and minutes == 5:
-        # wait a moment that he wont do two updates when he is faster then a minute with update and reboot
-        time.sleep(60)
-        subprocess.Popen(['sudo', 'systemctl', 'start', 'display-updater.service'])
+        subprocess.Popen(['sudo', 'reboot'])
 
     # sleeps 30 seconds and starts again
     time.sleep(30)
