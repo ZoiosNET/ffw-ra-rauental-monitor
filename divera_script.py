@@ -53,18 +53,18 @@ class HdmiCec:
         os.system("echo 'scan' | cec-client -s -d 1")
 
     def on(self):
-        sendTelegramMessage("DISPLAY ON")
         if self.last_command == "on":
             return
         self.last_command = "on"
+        sendTelegramMessage("DISPLAY ON")
         os.system("echo 'on " + self.device_no + "' | cec-client -s -d 1")
 #        border_conn.write(b'\xA0\x01\x01\xA2')
 
     def standby(self):
-        sendTelegramMessage("DISPLAY OFF")
         if self.last_command == "standby":
             return
         self.last_command = "standby"
+        sendTelegramMessage("DISPLAY OFF")
         os.system("echo 'standby " + self.device_no + "' | cec-client -s -d 1")
 #        border_conn.write(b'\xA0\x01\x00\xA1')
 
