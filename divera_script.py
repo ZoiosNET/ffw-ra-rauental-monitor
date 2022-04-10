@@ -4,6 +4,7 @@ import subprocess
 import datetime
 import requests
 #import serial
+import socket
 import time
 import os
 
@@ -24,6 +25,10 @@ with open('settings.propperties', 'r') as config_file:
         elif config_key == 'telegram_chat_id':
             TELEGRAM_CHAT_ID = config_value
 
+HOSTNAME = socket.gethostname()
+TELEGRAM_MSG_URL = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN \
+                        + "/sendMessage?chat_id=" + TELEGRAM_CHAT_ID + "&text="
+
 BASE_URL = "https://www.divera247.com/api"
 ALARM_URL = BASE_URL + "/v2/alarms?accesskey=" + ACCESS_KEY
 APPOINTMENT_URL = BASE_URL + "/v2/events?accesskey=" + ACCESS_KEY
@@ -35,12 +40,16 @@ screen_active = False
 #    port='/dev/ttyUSB0'
 #)
 
+def sendTelegramMessage(text):
+    requests.get(TELEGRAM_MSG_URL + "[" + HOSTNAME + "] " + text)
+
 
 class HdmiCec:
 
     def __init__(self, device_no):
         self.device_no = device_no
         self.last_command = ""
+        sendTelegramMessage("Starte Raspberry Pi...")
         os.system("echo 'scan' | cec-client -s -d 1")
 
     def on(self):
@@ -108,9 +117,7 @@ while True:
     elif alarm_active is False and screen_active is False and hour == 3 and minutes == 5:
         # wait a moment that he wont do two updates when he is faster then a minute with update and reboot
         time.sleep(60)
-        subprocess.Popen(['sudo', 'apt', 'update']).wait()
-        subprocess.Popen(['sudo', 'apt', '--yes', '--force-yes', 'upgrade']).wait()
-        subprocess.Popen(['sudo', 'reboot'])
+        subprocess.Popen(['sudo', 'systemctl', 'start', 'display-updater.service'])
 
     # sleeps 30 seconds and starts again
     time.sleep(30)
