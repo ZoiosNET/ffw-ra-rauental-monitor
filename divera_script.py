@@ -8,6 +8,7 @@ import time
 import os
 
 ACCESS_KEY = ""
+TELEGRAM_BOT_TOKEN = ""
 TELEGRAM_CHAT_ID = ""
 
 with open('settings.propperties', 'r') as config_file:
@@ -18,6 +19,8 @@ with open('settings.propperties', 'r') as config_file:
         config_value = config_property[1]
         if config_key == 'api_key':
             ACCESS_KEY = config_value
+        elif config_key == 'telegram_bot_token':
+            TELEGRAM_BOT_TOKEN = config_value
         elif config_key == 'telegram_chat_id':
             TELEGRAM_CHAT_ID = config_value
 
