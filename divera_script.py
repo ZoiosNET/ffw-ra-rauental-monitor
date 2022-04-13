@@ -112,10 +112,11 @@ while True:
     elif alarm_active is False and appointment_time is False:
         hdmi_cec.standby()
         screen_active = False
-
-    # case: monitor off an no mission and it is night time so make updates
-    elif alarm_active is False and screen_active is False and hour == 3 and minutes == 5:
-        subprocess.Popen(['sudo', 'reboot'])
+        
+        # case: monitor off an no mission and it is night time so make updates
+        if hour == 3 and minutes == 5:
+            sendTelegramMessage('rebooting...')
+            subprocess.Popen(['sudo', 'reboot'])
 
     # sleeps 30 seconds and starts again
     time.sleep(30)
