@@ -119,4 +119,4 @@ while True:
             subprocess.Popen(['sudo', 'reboot'])
 
     # sleeps 30 seconds and starts again
-    time.sleep(30)
+    time.sleep(45)
