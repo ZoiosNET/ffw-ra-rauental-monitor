@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
+import json
 import subprocess
 import datetime
 import requests
-#import serial
 import socket
 import time
 import os
@@ -25,6 +25,13 @@ with open('settings.propperties', 'r') as config_file:
         elif config_key == 'telegram_chat_id':
             TELEGRAM_CHAT_ID = config_value
 
+BORDER_CONTROL = False
+
+if os.path.exists('/etc/divera/config.json'):
+    with open('/etc/divera/config.json') as config_file:
+        json_conf = json.load(config_file)
+        BORDER_CONTROL = json_conf.get('border', False)
+
 HOSTNAME = socket.gethostname()
 TELEGRAM_MSG_URL = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN \
                         + "/sendMessage?chat_id=" + TELEGRAM_CHAT_ID + "&text="
@@ -36,9 +43,10 @@ PRE_APPOINTMENT_TIME = 30 * 60  # First Number is the Time in Minutes to turn di
 SUF_APPOINTMENT_TIME = 90 * 60  # First Number is the Time in Minutes to turn display off after an appointment
 screen_active = False
 
-#border_conn = serial.Serial(
-#    port='/dev/ttyUSB0'
-#)
+border_conn = None
+if BORDER_CONTROL:
+    import serial
+    border_conn = serial.Serial(port='/dev/ttyUSB0')
 
 def sendTelegramMessage(text):
     requests.get(TELEGRAM_MSG_URL + "[" + HOSTNAME + "] " + text)
@@ -58,7 +66,8 @@ class HdmiCec:
         self.last_command = "on"
         sendTelegramMessage("DISPLAY ON")
         os.system("echo 'on " + self.device_no + "' | cec-client -s -d 1")
-#        border_conn.write(b'\xA0\x01\x01\xA2')
+        if BORDER_CONTROL:
+            border_conn.write(b'\xA0\x01\x01\xA2')
 
     def standby(self):
         if self.last_command == "standby":
@@ -66,7 +75,8 @@ class HdmiCec:
         self.last_command = "standby"
         sendTelegramMessage("DISPLAY OFF")
         os.system("echo 'standby " + self.device_no + "' | cec-client -s -d 1")
-#        border_conn.write(b'\xA0\x01\x00\xA1')
+        if BORDER_CONTROL:
+            border_conn.write(b'\xA0\x01\x00\xA1')
 
 
 hdmi_cec = HdmiCec('0')
