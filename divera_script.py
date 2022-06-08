@@ -8,9 +8,9 @@ import socket
 import time
 import os
 
-ACCESS_KEY = ""
-TELEGRAM_BOT_TOKEN = ""
-TELEGRAM_CHAT_ID = ""
+ACCESS_KEY = ''
+TELEGRAM_BOT_TOKEN = ''
+TELEGRAM_CHAT_ID = ''
 
 with open('settings.propperties', 'r') as config_file:
     config_lines = config_file.readlines()
@@ -33,12 +33,12 @@ if os.path.exists('/etc/divera/config.json'):
         BORDER_CONTROL = json_conf.get('border', False)
 
 HOSTNAME = socket.gethostname()
-TELEGRAM_MSG_URL = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN \
-                        + "/sendMessage?chat_id=" + TELEGRAM_CHAT_ID + "&text="
+TELEGRAM_MSG_URL = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN \
+                        + '/sendMessage?chat_id=' + TELEGRAM_CHAT_ID + '&text='
 
-BASE_URL = "https://www.divera247.com/api"
-ALARM_URL = BASE_URL + "/v2/alarms?accesskey=" + ACCESS_KEY
-APPOINTMENT_URL = BASE_URL + "/v2/events?accesskey=" + ACCESS_KEY
+BASE_URL = 'https://www.divera247.com/api'
+ALARM_URL = BASE_URL + '/v2/alarms?accesskey=' + ACCESS_KEY
+APPOINTMENT_URL = BASE_URL + '/v2/events?accesskey=' + ACCESS_KEY
 PRE_APPOINTMENT_TIME = 30 * 60  # First Number is the Time in Minutes to turn display on before an appointment
 SUF_APPOINTMENT_TIME = 60 * 60  # First Number is the Time in Minutes to turn display off after an appointment
 screen_active = False
@@ -49,29 +49,29 @@ if BORDER_CONTROL:
     border_conn = serial.Serial(port='/dev/ttyUSB0')
 
 def sendTelegramMessage(text):
-    requests.get(TELEGRAM_MSG_URL + "[" + HOSTNAME + "] " + text)
+    requests.get(TELEGRAM_MSG_URL + '[' + HOSTNAME + '] ' + text)
 
 
 class HdmiCec:
 
     def __init__(self, device_no):
         self.device_no = device_no
-        self.last_command = ""
-        sendTelegramMessage("Starte Raspberry Pi...")
+        self.last_command = ''
+        sendTelegramMessage('Starte Raspberry Pi...')
         os.system("echo 'scan' | cec-client -s -d 1")
 
     def on(self):
-        if self.last_command == "on":
+        if self.last_command == 'on':
             return
-        self.last_command = "on"
-        sendTelegramMessage("DISPLAY ON")
+        self.last_command = 'on'
+        sendTelegramMessage('DISPLAY ON')
         os.system("echo 'on " + self.device_no + "' | cec-client -s -d 1")
 
     def standby(self):
-        if self.last_command == "standby":
+        if self.last_command == 'standby':
             return
-        self.last_command = "standby"
-        sendTelegramMessage("DISPLAY OFF")
+        self.last_command = 'standby'
+        sendTelegramMessage('DISPLAY OFF')
         os.system("echo 'standby " + self.device_no + "' | cec-client -s -d 1")
 
 
@@ -93,28 +93,29 @@ while True:
     response = requests.get(ALARM_URL)
     if response.status_code == 200:
         alerts = response.json()
-        if alerts["success"]:
-            alert_list = alerts["data"]["items"]
+        if alerts['success']:
+            alert_list = alerts['data']['items']
             if len(alert_list) == 0:
                 alarm_active = False
             else:
-                alert = alert_list[0]
-                if alert['closed']:
-                    close_time = datetime.datetime.fromtimestamp(alert['ts_close'] + SUF_APPOINTMENT_TIME)
-                    if now > close_time:
-                        alarm_active = False
-                else:
-                    border_open = True
+                for alert_id in alert_list:
+                    alert = alert_list[alert_id]
+                    if alert['closed']:
+                        close_time = datetime.datetime.fromtimestamp(alert['ts_close'] + SUF_APPOINTMENT_TIME)
+                        if now > close_time:
+                            alarm_active = False
+                    else:
+                        border_open = True
 
     # check current active appointment
     response = requests.get(APPOINTMENT_URL)
     if response.status_code == 200:
         data = response.json()
-        if data["success"]:
-            for appointment_id in data["data"]["items"]:
-                appointment = data["data"]["items"][appointment_id]
-                start_time = datetime.datetime.fromtimestamp(appointment["start"] - PRE_APPOINTMENT_TIME)
-                end_time = datetime.datetime.fromtimestamp(appointment["end"] + SUF_APPOINTMENT_TIME)
+        if data['success']:
+            for appointment_id in data['data']['items']:
+                appointment = data['data']['items'][appointment_id]
+                start_time = datetime.datetime.fromtimestamp(appointment['start'] - PRE_APPOINTMENT_TIME)
+                end_time = datetime.datetime.fromtimestamp(appointment['end'] + SUF_APPOINTMENT_TIME)
                 if start_time < now < end_time:
                     appointment_time = True
 
