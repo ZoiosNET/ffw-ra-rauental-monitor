@@ -40,7 +40,7 @@ BASE_URL = "https://www.divera247.com/api"
 ALARM_URL = BASE_URL + "/v2/alarms?accesskey=" + ACCESS_KEY
 APPOINTMENT_URL = BASE_URL + "/v2/events?accesskey=" + ACCESS_KEY
 PRE_APPOINTMENT_TIME = 30 * 60  # First Number is the Time in Minutes to turn display on before an appointment
-SUF_APPOINTMENT_TIME = 90 * 60  # First Number is the Time in Minutes to turn display off after an appointment
+SUF_APPOINTMENT_TIME = 60 * 60  # First Number is the Time in Minutes to turn display off after an appointment
 screen_active = False
 
 border_conn = None
@@ -66,8 +66,6 @@ class HdmiCec:
         self.last_command = "on"
         sendTelegramMessage("DISPLAY ON")
         os.system("echo 'on " + self.device_no + "' | cec-client -s -d 1")
-        if BORDER_CONTROL:
-            border_conn.write(b'\xA0\x01\x01\xA2')
 
     def standby(self):
         if self.last_command == "standby":
@@ -75,8 +73,6 @@ class HdmiCec:
         self.last_command = "standby"
         sendTelegramMessage("DISPLAY OFF")
         os.system("echo 'standby " + self.device_no + "' | cec-client -s -d 1")
-        if BORDER_CONTROL:
-            border_conn.write(b'\xA0\x01\x00\xA1')
 
 
 hdmi_cec = HdmiCec('0')
@@ -85,21 +81,28 @@ while True:
 
     alarm_active = True
     appointment_time = False
-
-    # check current active alert
-    response = requests.get(ALARM_URL)
-    if response.status_code == 200:
-        alert = response.json()
-        if alert["success"]:
-            alert_list = alert["data"]["items"]
-            if len(alert_list) == 0:
-                alarm_active = False
+    border_open = False
 
     # get current date
     now = datetime.datetime.now()
     day_of_week = now.weekday() + 1  # 1 = Monday
     hour = now.hour
     minutes = now.minute
+
+    # check current active alert
+    response = requests.get(ALARM_URL)
+    if response.status_code == 200:
+        alerts = response.json()
+        if alerts["success"]:
+            alert_list = alerts["data"]["items"]
+            if len(alert_list) == 0:
+                alert = alert_list[0]
+                if alert['closed']:
+                    close_time = datetime.datetime.fromtimestamp(alert['ts_close'] + SUF_APPOINTMENT_TIME)
+                    if now > close_time:
+                        alarm_active = False
+                if not alert['closed']:
+                    border_open = True
 
     # check current active appointment
     response = requests.get(APPOINTMENT_URL)
@@ -127,6 +130,13 @@ while True:
         if hour == 3 and minutes == 5:
             sendTelegramMessage('rebooting...')
             subprocess.Popen(['sudo', 'reboot'])
+    
+    # set border to open/close
+    if BORDER_CONTROL:
+        if border_open:
+            border_conn.write(b'\xA0\x01\x01\xA2')
+        else:
+            border_conn.write(b'\xA0\x01\x00\xA1')
 
     # sleeps 30 seconds and starts again
     time.sleep(30)
