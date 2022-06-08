@@ -96,12 +96,14 @@ while True:
         if alerts["success"]:
             alert_list = alerts["data"]["items"]
             if len(alert_list) == 0:
+                alarm_active = False
+            else:
                 alert = alert_list[0]
                 if alert['closed']:
                     close_time = datetime.datetime.fromtimestamp(alert['ts_close'] + SUF_APPOINTMENT_TIME)
                     if now > close_time:
                         alarm_active = False
-                if not alert['closed']:
+                else:
                     border_open = True
 
     # check current active appointment
