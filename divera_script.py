@@ -74,12 +74,33 @@ class HdmiCec:
         sendTelegramMessage('DISPLAY OFF')
         os.system("echo 'standby " + self.device_no + "' | cec-client -s -d 1")
 
+class BorderRelais:
+
+    def __init__(self):
+        self.border_status = ''
+    
+    def open(self):
+        border_conn.write(b'\xA0\x01\x01\xA2')
+        if self.border_status == 'open':
+            return
+        self.border_status = 'open'
+        sendTelegramMessage("BORDER OPEN")
+    
+    def close(self):
+        border_conn.write(b'\xA0\x01\x00\xA1')
+        if self.border_status == 'close':
+            return
+        self.border_status = 'close'
+        sendTelegramMessage("BORDER CLOSE")
+
 
 hdmi_cec = HdmiCec('0')
+border_relais = BorderRelais()
 
 while True:
 
-    alarm_active = True
+    alert_active = True
+    alert_left = False
     appointment_time = False
     border_open = False
 
@@ -96,15 +117,16 @@ while True:
         if alerts['success']:
             alert_list = alerts['data']['items']
             if len(alert_list) == 0:
-                alarm_active = False
+                alert_active = False
             else:
                 for alert_id in alert_list:
                     alert = alert_list[alert_id]
                     if alert['closed']:
                         close_time = datetime.datetime.fromtimestamp(alert['ts_close'] + SUF_APPOINTMENT_TIME)
                         if now > close_time:
-                            alarm_active = False
+                            alert_active = False
                     else:
+                        alert_left = True
                         border_open = True
 
     # check current active appointment
@@ -120,12 +142,12 @@ while True:
                     appointment_time = True
 
     # case: active alert or appointment time
-    if alarm_active is True or appointment_time is True:
+    if alert_active is True or alert_left is True or appointment_time is True:
         hdmi_cec.on()
         screen_active = True
 
     # case: no active alert and no appointment time
-    elif alarm_active is False and appointment_time is False:
+    elif alert_active is False and alert_left is False and appointment_time is False:
         hdmi_cec.standby()
         screen_active = False
         
@@ -137,9 +159,9 @@ while True:
     # set border to open/close
     if BORDER_CONTROL:
         if border_open:
-            border_conn.write(b'\xA0\x01\x01\xA2')
+            border_relais.open()
         else:
-            border_conn.write(b'\xA0\x01\x00\xA1')
+            border_relais.close()
 
     # sleeps 30 seconds and starts again
     time.sleep(30)
