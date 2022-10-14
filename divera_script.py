@@ -4,11 +4,11 @@ import json
 import subprocess
 import datetime
 import requests
+import urllib
 import socket
 import time
 import os
 
-from urllib import request
 from playsound import playsound
 
 ACCESS_KEY = ''
@@ -43,7 +43,7 @@ BASE_URL = 'https://app.divera247.com/api'
 ALARM_URL = BASE_URL + '/v2/alarms?accesskey=' + ACCESS_KEY
 INFO_URL = BASE_URL + '/v2/pull/all?accesskey=' + ACCESS_KEY
 APPOINTMENT_URL = BASE_URL + '/v2/events?accesskey=' + ACCESS_KEY
-TTS_URL = 'https://tts.zoios.net/api/tts?text='
+TTS_URL = 'https://tts.zoios.net/api/tts?'
 TTS_FILE_PATH = '/opt/display-controller/alert_sound.mp3'
 PRE_APPOINTMENT_TIME = 30 * 60  # First Number is the Time in Minutes to turn display on before an appointment
 SUF_APPOINTMENT_TIME = 60 * 60  # First Number is the Time in Minutes to turn display off after an appointment
@@ -76,7 +76,12 @@ def send_telegram_message(text):
 
 
 def download_alert_sound(text):
-    request.urlretrieve(TTS_URL + text, TTS_FILE_PATH)
+    params = {'text': text, 'speaker_id': '', 'style_wav': ''}
+    url = TTS_URL + urllib.parse.urlencode(params)
+    r = requests.get(url, stream=True)
+    with open(TTS_FILE_PATH, 'wb') as fd:
+        for chunk in r.iter_content(chunk_size=128):
+            fd.write(chunk)
 
 
 def parse_alert_sound_text(alert_item):
@@ -121,20 +126,24 @@ class BorderRelais:
         self.border_status = ''
     
     def open(self, tts_text):
-        border_conn.write(b'\xA0\x01\x01\xA2')
+        if BORDER_CONTROL:
+            border_conn.write(b'\xA0\x01\x01\xA2')
         if self.border_status == 'open':
             return
         self.border_status = 'open'
-        send_telegram_message("border open")
+        if BORDER_CONTROL:
+            send_telegram_message("border open")
         download_alert_sound(tts_text)
         send_telegram_message('downloaded alert sound')
     
     def close(self):
-        border_conn.write(b'\xA0\x01\x00\xA1')
+        if BORDER_CONTROL:
+            border_conn.write(b'\xA0\x01\x00\xA1')
         if self.border_status == 'close':
             return
         self.border_status = 'close'
-        send_telegram_message("border close")
+        if BORDER_CONTROL:
+            send_telegram_message("border close")
 
 
 hdmi_cec = HdmiCec('0')
@@ -175,9 +184,9 @@ while True:
                     else:
                         alert_left = True
                         border_open = True
-                        create_time = datetime.datetime.fromtimestamp(alert['date'] + SUF_ALERT_SOUND_TIME)
+                        create_time = datetime.datetime.fromtimestamp(alert['ts_publish'] + SUF_ALERT_SOUND_TIME)
+                        alert_sound_text = parse_alert_sound_text(alert)
                         if now < create_time:
-                            alert_sound_text = parse_alert_sound_text(alert)
                             play_sound = True
 
     # check current active appointment
@@ -208,11 +217,10 @@ while True:
             subprocess.Popen(['sudo', 'reboot'])
     
     # set border to open/close
-    if BORDER_CONTROL:
-        if border_open:
-            border_relais.open(alert_sound_text)
-        else:
-            border_relais.close()
+    if border_open:
+        border_relais.open(alert_sound_text)
+    else:
+        border_relais.close()
 
     # sleeps and starts again
     if play_sound:
