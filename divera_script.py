@@ -8,6 +8,9 @@ import socket
 import time
 import os
 
+from urllib import request
+from playsound import playsound
+
 ACCESS_KEY = ''
 TELEGRAM_BOT_TOKEN = ''
 TELEGRAM_CHAT_ID = ''
@@ -36,20 +39,57 @@ HOSTNAME = socket.gethostname()
 TELEGRAM_MSG_URL = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN \
                         + '/sendMessage?chat_id=' + TELEGRAM_CHAT_ID + '&text='
 
-BASE_URL = 'https://www.divera247.com/api'
+BASE_URL = 'https://app.divera247.com/api'
 ALARM_URL = BASE_URL + '/v2/alarms?accesskey=' + ACCESS_KEY
+INFO_URL = BASE_URL + '/v2/pull/all?accesskey=' + ACCESS_KEY
 APPOINTMENT_URL = BASE_URL + '/v2/events?accesskey=' + ACCESS_KEY
+TTS_URL = 'https://tts.zoios.net/api/tts?text='
+TTS_FILE_PATH = '/opt/display-controller/alert_sound.mp3'
 PRE_APPOINTMENT_TIME = 30 * 60  # First Number is the Time in Minutes to turn display on before an appointment
 SUF_APPOINTMENT_TIME = 60 * 60  # First Number is the Time in Minutes to turn display off after an appointment
+SUF_ALERT_SOUND_TIME = 6 * 60 # First Number is the Time in Minutes to play sound after an alert
 screen_active = False
+DEP_NAME = ''
+
+with requests.get(INFO_URL) as response:
+    if response.status_code == 200:
+        user_info = response.json()
+        if user_info['success']:
+            ucr_id = user_info['data']['ucr_active']
+            DEP_NAME = user_info['data']['ucr'][str(ucr_id)]['name']
+        else:
+            print('Could not fetch common data from ' + BASE_URL)
+            exit(-1)
+    else:
+        print('Could not fetch common data from ' + BASE_URL)
+        exit(-1)
+
 
 border_conn = None
 if BORDER_CONTROL:
     import serial
     border_conn = serial.Serial(port='/dev/ttyUSB0')
 
-def sendTelegramMessage(text):
+
+def send_telegram_message(text):
     requests.get(TELEGRAM_MSG_URL + '[' + HOSTNAME + '] ' + text)
+
+
+def download_alert_sound(text):
+    request.urlretrieve(TTS_URL + text, TTS_FILE_PATH)
+
+
+def parse_alert_sound_text(alert_item):
+    alert_type = 'Einsatz'
+    alert_addressed = ' für die Freiwillige Feuerwehr ' + DEP_NAME + '. '
+    alert_keyword = alert_item['title'] + '; '
+    alert_address = str(alert_item['address'])
+    if alert_item['priority'] is True:
+        alert_type = 'Einsatz mit Sonderrechten'
+    if alert_item['priority'] is False:
+        alert_type = 'Einsatz ohne Eile'
+    alert_address = alert_address.replace(alert_address.split(', ')[1].split(' ')[0], '')
+    return alert_type + alert_addressed + alert_keyword + alert_address
 
 
 class HdmiCec:
@@ -57,41 +97,44 @@ class HdmiCec:
     def __init__(self, device_no):
         self.device_no = device_no
         self.last_command = ''
-        sendTelegramMessage('Starte Raspberry Pi...')
+        send_telegram_message('Starte Raspberry Pi...')
         os.system("echo 'scan' | cec-client -s -d 1")
 
     def on(self):
         if self.last_command == 'on':
             return
         self.last_command = 'on'
-        sendTelegramMessage('DISPLAY ON')
+        send_telegram_message('DISPLAY ON')
         os.system("echo 'on " + self.device_no + "' | cec-client -s -d 1")
 
     def standby(self):
         if self.last_command == 'standby':
             return
         self.last_command = 'standby'
-        sendTelegramMessage('DISPLAY OFF')
+        send_telegram_message('DISPLAY OFF')
         os.system("echo 'standby " + self.device_no + "' | cec-client -s -d 1")
+
 
 class BorderRelais:
 
     def __init__(self):
         self.border_status = ''
     
-    def open(self):
+    def open(self, tts_text):
         border_conn.write(b'\xA0\x01\x01\xA2')
         if self.border_status == 'open':
             return
         self.border_status = 'open'
-        sendTelegramMessage("BORDER OPEN")
+        send_telegram_message("border open")
+        download_alert_sound(tts_text)
+        send_telegram_message('downloaded alert sound')
     
     def close(self):
         border_conn.write(b'\xA0\x01\x00\xA1')
         if self.border_status == 'close':
             return
         self.border_status = 'close'
-        sendTelegramMessage("BORDER CLOSE")
+        send_telegram_message("border close")
 
 
 hdmi_cec = HdmiCec('0')
@@ -103,6 +146,8 @@ while True:
     alert_left = False
     appointment_time = False
     border_open = False
+    play_sound = False
+    alert_sound_text = ''
 
     # get current date
     now = datetime.datetime.now()
@@ -119,23 +164,29 @@ while True:
             if len(alert_list) == 0:
                 alert_active = False
             else:
-                for alert_id in alert_list:
-                    alert = alert_list[alert_id]
+                for alert_id in alerts['data']['sorting']:
+                    alert = alert_list[str(alert_id)]
                     if alert['closed']:
                         close_time = datetime.datetime.fromtimestamp(alert['ts_close'] + SUF_APPOINTMENT_TIME)
                         if now > close_time:
                             alert_active = False
+                        else:
+                            alert_left = True
                     else:
                         alert_left = True
                         border_open = True
+                        create_time = datetime.datetime.fromtimestamp(alert['date'] + SUF_ALERT_SOUND_TIME)
+                        if now < create_time:
+                            alert_sound_text = parse_alert_sound_text(alert)
+                            play_sound = True
 
     # check current active appointment
     response = requests.get(APPOINTMENT_URL)
     if response.status_code == 200:
         data = response.json()
         if data['success']:
-            for appointment_id in data['data']['items']:
-                appointment = data['data']['items'][appointment_id]
+            for appointment_id in data['data']['sorting']:
+                appointment = data['data']['items'][str(appointment_id)]
                 start_time = datetime.datetime.fromtimestamp(appointment['start'] - PRE_APPOINTMENT_TIME)
                 end_time = datetime.datetime.fromtimestamp(appointment['end'] + SUF_APPOINTMENT_TIME)
                 if start_time < now < end_time:
@@ -153,15 +204,23 @@ while True:
         
         # case: monitor off an no mission and it is night time so make updates
         if hour == 3 and minutes == 5:
-            sendTelegramMessage('rebooting...')
+            send_telegram_message('rebooting...')
             subprocess.Popen(['sudo', 'reboot'])
     
     # set border to open/close
     if BORDER_CONTROL:
         if border_open:
-            border_relais.open()
+            border_relais.open(alert_sound_text)
         else:
             border_relais.close()
 
-    # sleeps 30 seconds and starts again
-    time.sleep(30)
+    # sleeps and starts again
+    if play_sound:
+        try:
+            playsound(TTS_FILE_PATH)
+        except Exception as e:
+            print('Error playing alert_sound:')
+            print(e)
+        time.sleep(20)
+    else:
+        time.sleep(30)
